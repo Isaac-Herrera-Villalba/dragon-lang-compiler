@@ -1,0 +1,61 @@
+# .editorconfig para bayesian-classification
+# Mantiene estilo consistente en código Python, LaTeX y archivos de datos
+root = true
+
+#############################
+# Reglas por defecto
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+######################################
+# Ficheros de texto, markdown y config
+[*.{md,txt,ini,conf}]
+trim_trailing_whitespace = false
+max_line_length = 100
+
+######################################
+# Archivos CSV y datos
+[*.{csv,ods,xlsx}]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 4
+
+######################################
+# Código Python
+[*.py]
+indent_style = space
+indent_size = 4
+# Recomendado por Black
+max_line_length = 88
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+######################################
+# Archivos Makefile
+[Makefile]
+indent_style = tab
+trim_trailing_whitespace = false
+
+######################################
+# Archivos LaTeX
+[*.tex]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+insert_final_newline = true
+max_line_length = 100
+
+######################################
+# Archivos de licencia o README
+[{LICENSE,README,README.md}]
+trim_trailing_whitespace = false
+insert_final_newline = true
+

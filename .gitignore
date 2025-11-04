@@ -1,0 +1,75 @@
+# Evitar subir el repositorio interno de Git
+.git
+
+########################################
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+~$*
+*.swp
+*.swo
+
+########################################
+# Archivos de Python
+src/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.env
+.venv
+venv/
+.envrc
+
+# Archivos de logs o temporales
+*.log
+*.tmp
+*.bak
+
+########################################
+# Archivos generados por ejecución
+/output/
+tmp/
+*.out
+
+########################################
+# Archivos LaTeX
+*.aux
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.log
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.tex
+*.pdf
+*.out
+*.nav
+*.snm
+
+########################################
+# Archivos de configuración locales
+*.ini
+*.conf
+
+########################################
+# Editor y entorno
+.vscode/
+.idea/
+*.code-workspace
+
+########################################
+# Archivos de compiladores o Make
+*.dvi
+*.ilg
+*.ind
+*.idx
+*.ist
+
+.venv
+.~lock.*
+

@@ -1,0 +1,17 @@
+# === Dependencias principales ===
+pandas >= 2.2.2
+numpy >= 1.26.4
+
+# === Lectura de archivos Excel y ODS ===
+openpyxl >= 3.1.5      # para .xlsx
+odfpy >= 1.4.1         # para .ods
+
+# === Generación de reportes PDF (opcional, si no usas LaTeX) ===
+pylatexenc >= 2.10     # codificación segura de LaTeX en strings
+
+# === Soporte opcional para mejor salida en consola ===
+tabulate >= 0.9.0
+
+# === Recomendado para entorno reproducible ===
+python-dateutil >= 2.9.0.post0
+
