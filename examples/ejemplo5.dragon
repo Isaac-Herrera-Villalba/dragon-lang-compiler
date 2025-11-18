@@ -1,0 +1,70 @@
+/*
+ejemplo5.dragon
+----------------------------------------------------
+Descripción:
+Programa integral que combina:
+- Funciones recursivas (suma_hasta)
+- Función auxiliar no recursiva (max3)
+- Operador %, comparaciones y booleanos
+- Lectura, impresión y strings
+- Estructuras anidadas (if, while, for)
+*/
+
+func suma_hasta(int n) {
+    if (n <= 0) {
+        return 0;
+    }
+    return n + suma_hasta(n - 1);
+}
+
+func max3(int a, int b, int c) {
+    int m = a;
+    if (b > m) {
+        m = b;
+    }
+    if (c > m) {
+        m = c;
+    }
+    return m;
+}
+
+func main() {
+    print "Introduce tres números enteros:";
+    int x;
+    int y;
+    int z;
+    read x;
+    read y;
+    read z;
+
+    int mx;
+    mx = max3(x, y, z);
+
+    print "El máximo de los tres es:";
+    print mx;
+
+    int suma;
+    suma = suma_hasta(mx);
+
+    print "La suma recursiva desde 1 hasta el máximo es:";
+    print suma;
+
+    bool suma_par;
+    suma_par = ((suma % 2) == 0);
+
+    if (suma_par) {
+        print "La suma es par";
+    } else {
+        print "La suma es impar";
+    }
+
+    int i = 0;
+    for (i = 0; i < 2; i = i + 1) {
+        print "Iteración final del for:";
+        print i;
+    }
+
+    string fin = "Fin del ejemplo 5";
+    print fin;
+}
+

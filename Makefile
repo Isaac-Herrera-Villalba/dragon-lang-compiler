@@ -1,44 +1,77 @@
-# Makefile para Dragon-lang
+# ============================================================
+# Makefile para el compilador Dragon-lang
+# ============================================================
 
-# Variables
-PROJECT_NAME   = main
-GRAMMAR_LEXER  = src/lexer/DragonLexer.g4
-GRAMMAR_PARSER = grammar/DragonLang.g4
-SRC_DIR        = src
-TEST_SCRIPT    = $(SRC_DIR)/main.py
+PYTHON       = python3
+SRC_DIR      = src
+MAIN_MODULE  = main
+EXAMPLES_DIR = examples
+EXAMPLES     = $(wildcard $(EXAMPLES_DIR)/*.dragon)
 
-.PHONY: all help antlr run full clean
+.PHONY: help run  all-examples clean
 
-all: help
-
+# ------------------------------------------------------------
+# Ayuda
+# ------------------------------------------------------------
 help:
-	@echo "Opciones disponibles:"
-	@echo "  make antlr     -> Genera lexer y parser desde las gramáticas (.g4)"
-	@echo "  make run       -> Ejecuta el script principal $(TEST_SCRIPT)"
-	@echo "  make full      -> Ejecuta antlr y luego run de $(TEST_SCRIPT)"
-	@echo "  make clean     -> Elimina archivos generados por ANTLR y Python"
+	@echo "=============================================="
+	@echo "     Opciones disponibles (Dragon-lang)        "
+	@echo "=============================================="
+	@echo ""
+	@echo "  make run <archivo>        Ejecuta un .dragon"
+	@echo "     Ejemplos:"
+	@echo "       make run ejemplo0"
+	@echo "       make run ejemplo0.dragon"
+	@echo ""
+	@echo "  make all-examples        Ejecuta todos los .dragon"
+	@echo ""
+	@echo "  make clean                Limpia __pycache__"
+	@echo ""
 
-# Generar lexer y parser con ANTLR
-antlr:
-	@echo "Generando lexer y parser con ANTLR..."
-	@echo "Generando lexer..."
-	antlr4 -Dlanguage=Python3 -o $(SRC_DIR)/lexer $(GRAMMAR_LEXER)
-	@echo "Generando parser..."
-	antlr4 -Dlanguage=Python3 -o $(SRC_DIR)/parser -lib $(SRC_DIR)/lexer $(GRAMMAR_PARSER)
+# ------------------------------------------------------------
+# Ejecutar archivos .dragon sin escribir FILE=
+# ------------------------------------------------------------
+run:
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "Uso: make run <archivo.dragon>"; \
+		exit 1; \
+	fi; \
+	FILE=$(word 2,$(MAKECMDGOALS)); \
+	case $$FILE in \
+		*.dragon) TARGET="$$FILE" ;; \
+		*) TARGET="$$FILE.dragon" ;; \
+	esac; \
+	if [ ! -f "$(EXAMPLES_DIR)/$$TARGET" ]; then \
+		echo "Error: El archivo '$(EXAMPLES_DIR)/$$TARGET' no existe."; \
+		exit 1; \
+	fi; \
+	$(PYTHON) -m $(SRC_DIR).$(MAIN_MODULE) $(EXAMPLES_DIR)/$$TARGET
 
-# Ejecutar script principal
-run: $(TEST_SCRIPT)
-	@echo "Ejecutando Dragon-lang..."
-	python3 $(TEST_SCRIPT)
+# ------------------------------------------------------------
+# Ejecutar TODOS los archivos .dragon detectados allmáticamente
+# ------------------------------------------------------------
+all-examples:
+	@echo "Ejecutando TODOS los archivos .dragon detectados:"
+	@for f in $(EXAMPLES); do \
+		echo "---------------------------------------"; \
+		echo "Ejecutando $$f"; \
+		$(PYTHON) -m $(SRC_DIR).$(MAIN_MODULE) $$f; \
+		echo ""; \
+	done
+	@echo "---------------------------------------"
+	@echo "Fin de ejecución automática."
 
-# Ejecutar todo el flujo: ANTLR + run
-full: antlr run
-
-# Limpiar archivos generados
+# ------------------------------------------------------------
+# Limpieza
+# ------------------------------------------------------------
 clean:
-	@echo "Eliminando archivos generados..."
-	rm -fv $(SRC_DIR)/lexer/*Lexer*.py $(SRC_DIR)/parser/*Parser*.py
-	rm -fv $(SRC_DIR)/lexer/*.tokens $(SRC_DIR)/parser/*.tokens
-	rm -rfv $(SRC_DIR)/lexer/src/
-	rm -rf $(SRC_DIR)/__pycache__
+	find $(SRC_DIR) -type d -name "__pycache__" -exec rm -rf {} +
+	find $(SRC_DIR) -type f -name "*.pyc" -delete
+	@echo "Limpieza completa."
+
+# ------------------------------------------------------------
+# Evitar que make intente crear archivos con nombres de ejemplo
+# ------------------------------------------------------------
+%:
+	@:
 

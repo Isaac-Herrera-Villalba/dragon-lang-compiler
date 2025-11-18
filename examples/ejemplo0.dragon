@@ -1,0 +1,36 @@
+/*
+ejemplo0.dragon
+----------------------------------------------------
+Descripción:
+Uso básico de variables enteras, booleanas y de texto,
+expresiones aritméticas y booleanas, comentarios y print.
+*/
+
+func main() {
+    # Variables básicas
+    int a = 10;
+    int b = 3;
+    int suma;
+    bool cond;
+    string mensaje;
+
+    # Expresión aritmética con precedencia
+    suma = a + b * 2;
+
+    # Expresión booleana
+    cond = (suma >= 15) && (a == 10);
+
+    print "Valor de suma:";
+    print suma;
+
+    if (cond) {
+        mensaje = "La condición es verdadera";
+    } else {
+        mensaje = "La condición es falsa";
+    }
+
+    print mensaje;
+
+    print "Fin del ejemplo 0";
+}
+

@@ -1,0 +1,49 @@
+/*
+ejemplo4.dragon
+----------------------------------------------------
+Descripción:
+Función recursiva fib(int x) que calcula el n-ésimo
+término de Fibonacci. Usa recursión doble, lectura,
+condicionales y while adicional.
+*/
+
+func fib(int x) {
+    if (x <= 1) {
+        return x;
+    }
+    return fib(x - 1) + fib(x - 2);
+}
+
+func main() {
+    print "Introduce un n para Fibonacci:";
+    int n;
+    read n;
+
+    int resultado;
+    resultado = fib(n);
+
+    print "Fibonacci de:";
+    print n;
+
+    print "Resultado:";
+    print resultado;
+
+    bool grande;
+    grande = (resultado > 20);
+
+    if (grande) {
+        print "El valor de Fibonacci es grande";
+    } else {
+        print "El valor de Fibonacci es pequeño o moderado";
+    }
+
+    int k = 0;
+    while (k < 3) {
+        print "Iteración extra en while:";
+        print k;
+        k = k + 1;
+    }
+
+    print "Fin del ejemplo 4";
+}
+

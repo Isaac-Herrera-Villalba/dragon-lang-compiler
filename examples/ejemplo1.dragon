@@ -1,0 +1,46 @@
+/*
+ejemplo1.dragon
+----------------------------------------------------
+Descripción:
+Estructuras de control anidadas:
+while, for, if-else, do-while y uso del operador %.
+Calcula una suma con lógica de pares/impares.
+*/
+
+func main() {
+    int i = 0;
+    int j;
+    int total = 0;
+
+    # Bucle while externo
+    while (i < 3) {
+        j = 1;
+
+        # Bucle for interno
+        for (j = 1; j <= 4; j = j + 1) {
+
+            # Si (i + j) es par, sumamos; si es impar, restamos
+            if ( ((i + j) % 2) == 0 ) {
+                total = total + (i + j);
+            } else {
+                total = total - (i + j);
+            }
+        }
+
+        i = i + 1;
+    }
+
+    print "Resultado total:";
+    print total;
+
+    # Demostración de do-while
+    int k = 0;
+    do {
+        print "Iteración en do-while:";
+        print k;
+        k = k + 1;
+    } while (k < 2);
+
+    print "Fin del ejemplo 1";
+}
+

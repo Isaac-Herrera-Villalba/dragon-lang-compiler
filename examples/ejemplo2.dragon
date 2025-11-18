@@ -1,0 +1,38 @@
+/*
+ejemplo2.dragon
+----------------------------------------------------
+Descripción:
+Uso de read, for, booleanos y strings.
+Lee un número n, calcula la suma de 1 a n y reporta
+si la suma es mayor que 50.
+*/
+
+func main() {
+    print "Introduce un número entero:";
+    int n;
+    read n;
+
+    int i;
+    int suma = 0;
+
+    # Suma del 1 al n usando for
+    for (i = 1; i <= n; i = i + 1) {
+        suma = suma + i;
+    }
+
+    print "La suma del 1 al número ingresado es:";
+    print suma;
+
+    bool mayor50;
+    mayor50 = (suma > 50);
+
+    if (mayor50) {
+        print "La suma fue mayor a 50";
+    } else {
+        print "La suma fue menor o igual a 50";
+    }
+
+    string fin = "Fin del ejemplo 2";
+    print fin;
+}
+

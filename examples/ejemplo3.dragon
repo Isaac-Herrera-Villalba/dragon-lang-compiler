@@ -1,0 +1,37 @@
+/*
+ejemplo3.dragon
+----------------------------------------------------
+Descripción:
+Función recursiva factorial(int n).
+Demuestra recursión, retorno de int, uso de read,
+if-else y comparaciones.
+*/
+
+func factorial(int n) {
+    if (n <= 1) {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+func main() {
+    print "Introduce un número para calcular su factorial:";
+    int n;
+    read n;
+
+    int f;
+    f = factorial(n);
+
+    print "Factorial calculado:";
+    print f;
+
+    if (f > 100) {
+        print "El resultado es mayor que 100";
+    } else {
+        print "El resultado es menor o igual que 100";
+    }
+
+    print "Fin del ejemplo 3";
+}
+
