@@ -81,7 +81,8 @@ class SemanticAnalyzer:
         # Registrar funciones en ámbito global
         for func in program.functions:
             try:
-                self.symtab.define_func(func.name, return_type=None)
+                # registrar también los parámetros
+                self.symtab.define_func(func.name, return_type=None, params=func.params)
             except SymbolTableError as e:
                 raise SemanticError(f"Función redeclarada: {func.name}. Detalle: {e}")
 

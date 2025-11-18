@@ -45,6 +45,7 @@ from .ast import (
     AssignmentExpr,
     Expr,
     Stmt,
+    CallExpr,
 )
 
 
@@ -514,28 +515,21 @@ class Parser:
     # ===========================================================
     # PRIMARY (literales, identificadores, agrupación)
     # ===========================================================
-
-    def primary(self) -> Expr:
-        """
-        Analiza elementos primarios:
-        - literales numéricos, booleanos y strings
-        - expresiones agrupadas: (expr)
-        - uso de variables (identificadores)
-        """
+    def primary(self):
         if self.is_at_end():
             raise self.error(self.peek(), "Expresión incompleta.")
 
         tok = self.peek()
         lex = tok.lexeme
 
-        # números (int o float)
+        # números
         if lex.replace('.', '', 1).isdigit():
             self.advance()
             if "." in lex:
                 return LiteralExpr(float(lex))
             return LiteralExpr(int(lex))
 
-        # TRUE / FALSE
+        # true/false
         if lex == "true":
             self.advance()
             return LiteralExpr(True)
@@ -543,21 +537,34 @@ class Parser:
             self.advance()
             return LiteralExpr(False)
 
-        # STRING
+        # strings
         if lex.startswith('"') and lex.endswith('"'):
             self.advance()
             return LiteralExpr(lex[1:-1])
 
-        # Agrupación
+        # agrupación
         if self.match("("):
             expr = self.expression()
             self.consume(")", "Se esperaba ')'.")
             return GroupingExpr(expr)
 
-        # Identificador (no palabra clave)
+        # IDENTIFICADOR O LLAMADA A FUNCIÓN
         if lex not in self.keywords and (lex[0].isalpha() or lex[0] == "_"):
             self.advance()
-            return VarExpr(lex)
+            name = lex
+
+            # llamada a función
+            if self.match("("):
+                args = []
+                if not self.check(")"):
+                    args.append(self.expression())
+                    while self.match(","):
+                        args.append(self.expression())
+                self.consume(")", "Se esperaba ')' en llamada a función.")
+                return CallExpr(name, args)
+
+            # si no hay '(', es variable
+            return VarExpr(name)
 
         raise self.error(tok, f"Expresión inválida: '{lex}'.")
 
