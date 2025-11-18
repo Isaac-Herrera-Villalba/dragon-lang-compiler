@@ -3,15 +3,18 @@
 """
 src/codigo_final/vm.py
 ------------------------------------------------------------
-Máquina virtual para Dragon-lang con:
+Descripción:
+Implementa la máquina virtual (VM) para ejecutar el código
+intermedio (IR/TAC) generado por el compilador de Dragon-Lang.
 
-- int, float, bool, string
-- funciones con parámetros
-- llamadas (param + call)
-- recursión (pila de frames)
-- return con o sin valor
-- operadores aritméticos, lógicos y comparaciones
-- concatenación de strings con +
+La VM:
+- Interpreta instrucciones TAC (asignaciones, operaciones, saltos).
+- Gestiona una pila de frames para soportar funciones y recursión.
+- Implementa paso de parámetros y retorno de valores.
+- Maneja tipos básicos: int, float, bool (como 0/1) y string.
+- Soporta I/O mediante instrucciones print y read.
+
+Esta es la fase final del pipeline: ejecuta el programa optimizado.
 ------------------------------------------------------------
 """
 
@@ -21,103 +24,147 @@ from typing import Dict, List, Optional, Any
 
 from ..representacion_intermedia.ir import (
     IRProgram,
-    Label, Goto, IfGoto,
-    Assign, BinaryOp, UnaryOp,
-    PrintInstr, ReadInstr,
-    FuncLabel, ParamInstr, CallInstr,
-    ReturnInstr, Instruction
+    Label,
+    Goto,
+    IfGoto,
+    Assign,
+    BinaryOp,
+    UnaryOp,
+    PrintInstr,
+    ReadInstr,
+    FuncLabel,
+    ParamInstr,
+    CallInstr,
+    ReturnInstr,
+    Instruction
 )
 
 
 class VMError(Exception):
+    """
+    Excepción específica para errores de ejecución en la
+    máquina virtual, tales como:
+    - División entre cero
+    - Uso de variables no inicializadas
+    - Funciones o etiquetas inexistentes
+    - Inconsistencias en llamadas y retornos
+    """
     pass
 
 
 @dataclass
 class Frame:
     """
-    Frame de ejecución de una función.
+    Frame de ejecución de una función en la pila de llamadas.
+
+    Atributos:
+    - func_name: nombre de la función actual (None para main inicial
+      si se considera como "nivel raíz").
+    - env: entorno de variables locales (diccionario nombre → valor).
+    - return_ip: posición en la lista de instrucciones a la que se
+      debe regresar tras el return.
+    - ret_dest: nombre de la variable/temporal en el llamador donde
+      debe almacenarse el valor de retorno, o None si se ignora.
     """
     func_name: Optional[str]
     env: Dict[str, Any]
     return_ip: Optional[int]
-    ret_dest: Optional[str]  # variable destino del valor de retorno en el llamador
+    ret_dest: Optional[str]
 
 
 class VirtualMachine:
+    """
+    Máquina virtual para ejecutar programas en IR/TAC.
+
+    Funciona como un intérprete de instrucciones lineales con:
+    - Pila de frames para llamadas a funciones.
+    - Entorno de variables por función.
+    - Mapa de etiquetas y funciones a índices de instrucciones.
+    """
+
     def __init__(self, program: IRProgram, func_param_names: Optional[Dict[str, List[str]]] = None):
+        # Programa IR
         self.program = program
         self.instructions: List[Instruction] = program.instructions
 
-        # etiquetas de saltos normales
+        # Mapas de etiquetas y funciones a índices de instrucción
         self.labels: Dict[str, int] = {}
-        # inicio de funciones
         self.func_labels: Dict[str, int] = {}
 
-        # firma de funciones: nombre → [param1, param2, ...]
+        # Firma de funciones: nombre → lista de nombres de parámetros
         self.func_params: Dict[str, List[str]] = func_param_names or {}
 
-        # pila de frames (llamadas)
+        # Pila de frames (para llamadas anidadas / recursión)
         self.frames: List[Frame] = []
 
-        # contexto actual
+        # Contexto actual de ejecución
         self.current_func: Optional[str] = None
         self.env: Dict[str, Any] = {}
-        self.ip: int = 0
+        self.ip: int = 0  # Instruction Pointer
 
-        # pila de argumentos pendiente para la próxima llamada
+        # Pila de argumentos pendiente para la siguiente llamada
         self.arg_stack: List[Any] = []
 
-        # valor final (return de main)
+        # Valor final de retorno (return desde main)
         self.return_value: Any = None
 
+        # Indexar etiquetas y funciones
         self._index_labels()
 
     # ============================================================
-    #   Indexar etiquetas y funciones
+    #   Indexación de etiquetas y funciones
     # ============================================================
 
-    def _index_labels(self):
+    def _index_labels(self) -> None:
+        """
+        Recorre las instrucciones del IR para construir:
+        - labels: nombre_etiqueta → índice de instrucción
+        - func_labels: nombre_función → índice donde inicia su cuerpo
+        """
         for i, ins in enumerate(self.instructions):
             if isinstance(ins, Label):
                 self.labels[ins.name] = i
             elif isinstance(ins, FuncLabel):
-                # el nombre de la función es único
                 self.func_labels[ins.name] = i
 
     # ============================================================
-    #   Utilidades de valores
+    #   Utilidades de acceso a valores
     # ============================================================
 
     def _get(self, operand: str) -> Any:
         """
-        Interpreta operandos TAC:
-        - literales: "3", "3.14", "true"/"false" → ya convertidos en IR a 1/0
-        - string literal: "\"hola\""
-        - nombre de variable / temporal: buscar en env
+        Obtiene el valor asociado a un operando TAC.
+
+        Reglas:
+        - Si es una cadena entre comillas: se devuelve el contenido.
+        - Si es el nombre de una variable/temporal: se busca en env.
+        - Si es un literal numérico entero o flotante: se convierte.
+        - Si es "0" o "1": se interpreta como entero (para bool).
+        - Si no cae en ninguno de los casos y no está en env:
+          se considera error de variable no inicializada.
         """
-        # literal string con comillas
+        # String literal con comillas
         if operand.startswith('"') and operand.endswith('"'):
             return operand[1:-1]
 
-        # variable/temporal
+        # Variable/temporal
         if operand in self.env:
             return self.env[operand]
 
-        # entero
+        # Entero (soporta signo)
         if operand.lstrip("-").isdigit():
             return int(operand)
 
-        # float
+        # Float
         try:
             f = float(operand)
-            # distinguir int vs float por la notación
+            # Determina si se mantiene como float según el formato
             if "." in operand or "e" in operand.lower():
                 return f
         except ValueError:
             pass
 
-        # bool codificada como 0/1
+        # Booleanos codificados como 0/1
         if operand == "0":
             return 0
         if operand == "1":
@@ -125,30 +172,44 @@ class VirtualMachine:
 
         raise VMError(f"Uso de variable/temporal no inicializado: '{operand}'.")
 
-    def _set(self, name: str, value: Any):
+    def _set(self, name: str, value: Any) -> None:
+        """
+        Asigna un valor a una variable/temporal en el entorno actual.
+        """
         self.env[name] = value
 
     # ============================================================
-    #   Ejecución principal
+    #   Bucle principal de ejecución
     # ============================================================
 
     def run(self):
-        # Buscar main
+        """
+        Ejecuta el programa IR.
+
+        Pasos:
+        - Busca la función 'main'.
+        - Simula una llamada inicial a main() sin llamador.
+        - Ejecuta instrucciones hasta que:
+          - se hace return en main
+          - o se llega al final del programa.
+        """
+        # Verificar que exista main
         if "main" not in self.func_labels:
             raise VMError("No se encontró la función 'main'.")
 
-        # Simular una llamada inicial a main() sin caller
+        # Inicializar contexto para 'main'
         self.current_func = "main"
         self.env = {}
 
-        # ip al primer instr. DESPUÉS del FuncLabel de main
+        # Colocar IP en la instrucción siguiente a FuncLabel main
         self.ip = self.func_labels["main"] + 1
 
+        # Bucle principal de ejecución
         while self.ip < len(self.instructions):
             ins = self.instructions[self.ip]
 
             # ----------------------------------------------------
-            # Etiquetas y FuncLabel: no hacen nada en tiempo de ejecución
+            # Etiquetas y FuncLabel (no ejecutables)
             # ----------------------------------------------------
             if isinstance(ins, (Label, FuncLabel)):
                 self.ip += 1
@@ -169,19 +230,20 @@ class VirtualMachine:
                 b = self._get(ins.right)
                 op = ins.op
 
-                # concatenación con strings
+                # Concatenación con strings
                 if op == "+" and (isinstance(a, str) or isinstance(b, str)):
                     r = str(a) + str(b)
                     self._set(ins.dest, r)
 
                 else:
-                    # numéricos
+                    # Validación numérica
                     if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
                         raise VMError(f"Operador '{op}' requiere operandos numéricos (o string en '+').")
 
                     a_num = float(a)
                     b_num = float(b)
 
+                    # Operadores aritméticos / comparaciones / lógicos
                     if op == "+":
                         r = a_num + b_num
                     elif op == "-":
@@ -215,7 +277,7 @@ class VirtualMachine:
                     else:
                         raise VMError(f"Operador binario no soportado: '{op}'.")
 
-                    # guardar como int si es entero exacto
+                    # Guardar como int si el resultado flotante es entero exacto
                     if isinstance(r, float) and r.is_integer():
                         r = int(r)
                     self._set(ins.dest, r)
@@ -263,14 +325,15 @@ class VirtualMachine:
 
             elif isinstance(ins, ReadInstr):
                 raw = input().strip()
-                # intentar interpretar como número
+                # Intentar interpretar como número
                 try:
                     if "." in raw or "e" in raw.lower():
                         v = float(raw)
                     else:
                         v = int(raw)
                 except Exception:
-                    v = raw  # string si no es numérico
+                    # Si no es numérico, se conserva como cadena
+                    v = raw
                 self._set(ins.dest, v)
 
             # ----------------------------------------------------
@@ -281,7 +344,7 @@ class VirtualMachine:
                 self.arg_stack.append(val)
 
             # ----------------------------------------------------
-            # Llamada a función
+            # Llamadas a función
             # ----------------------------------------------------
             elif isinstance(ins, CallInstr):
                 callee = ins.callee
@@ -293,11 +356,11 @@ class VirtualMachine:
                 if arg_count > len(self.arg_stack):
                     raise VMError("Insuficientes argumentos en la pila de parámetros.")
 
-                # Extraer los últimos arg_count argumentos
+                # Extraer últimos arg_count argumentos
                 args = self.arg_stack[-arg_count:]
                 self.arg_stack = self.arg_stack[:-arg_count]
 
-                # Obtener nombres de parámetros declarados
+                # Nombres de parámetros declarados
                 param_names = self.func_params.get(callee, [])
                 if len(param_names) != arg_count:
                     raise VMError(
@@ -305,7 +368,7 @@ class VirtualMachine:
                         f"parámetros declarados ({len(param_names)}) en '{callee}'."
                     )
 
-                # Guardar frame actual
+                # Guardar frame actual (caller)
                 frame = Frame(
                     func_name=self.current_func,
                     env=self.env,
@@ -321,7 +384,6 @@ class VirtualMachine:
 
                 self.env = new_env
                 self.current_func = callee
-                # saltar al interior de la función
                 self.ip = self.func_labels[callee] + 1
                 continue
 
@@ -329,18 +391,18 @@ class VirtualMachine:
             # return
             # ----------------------------------------------------
             elif isinstance(ins, ReturnInstr):
-                # valor de retorno (si lo hay)
+                # Valor de retorno si existe
                 rv = self._get(ins.value) if ins.value is not None else None
 
+                # Si no hay frames, es un return desde main → fin
                 if not self.frames:
-                    # return desde main: terminar programa
                     self.return_value = rv
                     break
 
-                # restaurar caller
+                # Restaurar contexto del llamador
                 frame = self.frames.pop()
 
-                # si el llamador espera destino, asignar allí el valor
+                # Asignar valor de retorno en el llamador si corresponde
                 if frame.ret_dest is not None and rv is not None:
                     frame.env[frame.ret_dest] = rv
 
@@ -352,7 +414,7 @@ class VirtualMachine:
             else:
                 raise VMError(f"Instrucción no soportada: {type(ins).__name__}")
 
-            # avanzar
+            # Avanzar a la siguiente instrucción por defecto
             self.ip += 1
 
         return self.return_value
@@ -364,17 +426,15 @@ class VirtualMachine:
 
 def run_ir_program(program: IRProgram, func_param_names: Optional[Dict[str, List[str]]] = None):
     """
-    Ejecuta un IRProgram dado.
+    Ejecuta un IRProgram en una máquina virtual nueva.
 
-    func_param_names:
-        diccionario opcional: nombre_función -> [lista de nombres de parámetros]
+    Parámetros:
+    - program: objeto IRProgram con la lista de instrucciones TAC.
+    - func_param_names: diccionario opcional que mapea el nombre
+      de la función a la lista de nombres de sus parámetros.
 
-        Ejemplo:
-            {
-               "factorial": ["n"],
-               "fib": ["x"],
-               "main": []
-            }
+    Devuelve:
+    - El valor de retorno de la función main, si lo hay.
     """
     vm = VirtualMachine(program, func_param_names)
     return vm.run()

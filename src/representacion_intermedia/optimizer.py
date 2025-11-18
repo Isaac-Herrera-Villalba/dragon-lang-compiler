@@ -3,17 +3,31 @@
 """
 src/representacion_intermedia/optimizer.py
 ------------------------------------------------------------
-Optimizador para Dragon-lang:
+Descripción:
+Implementa optimizaciones básicas para la representación
+intermedia (IR) de Dragon-Lang.
 
-- Propagación de constantes
-- Constant folding (int, float, bool)
-- Eliminación de temporales muertos
-- Eliminación de gotos triviales
-- Compatible con:
-    - ParamInstr
-    - CallInstr
-    - FuncLabel
-    - Literales string
+Su propósito es mejorar el código TAC eliminando redundancias y
+simplificando operaciones antes de la ejecución en la máquina virtual.
+
+Incluye:
+1) Propagación de constantes
+   Reemplaza variables temporales cuyo valor es constante por el literal
+   correspondiente en el resto del código.
+
+2) Constant folding
+   Evalúa en tiempo de compilación operaciones binarias/unarias cuyos
+   operandos son constantes (int, float, bool, string).
+
+3) Eliminación de temporales muertos
+   Elimina asignaciones a temporales que nunca se usan posteriormente
+   (dead-code elimination básica).
+
+4) Eliminación de gotos triviales
+   Remueve saltos que apuntan inmediatamente a la siguiente instrucción
+   con una etiqueta.
+
+El optimizador produce un nuevo IRProgram equivalente pero más eficiente.
 ------------------------------------------------------------
 """
 
@@ -23,11 +37,18 @@ from typing import List, Dict, Set, Optional, Union
 from .ir import (
     IRProgram,
     Instruction,
-    Assign, BinaryOp, UnaryOp,
-    PrintInstr, ReadInstr,
-    Goto, IfGoto, Label,
+    Assign,
+    BinaryOp,
+    UnaryOp,
+    PrintInstr,
+    ReadInstr,
+    Goto,
+    IfGoto,
+    Label,
     ReturnInstr,
-    ParamInstr, CallInstr, FuncLabel
+    ParamInstr,
+    CallInstr,
+    FuncLabel
 )
 
 
@@ -36,8 +57,18 @@ from .ir import (
 # ============================================================
 
 class Optimizer:
+    """
+    Clase encargada de aplicar las distintas etapas de optimización,
+    produciendo un IR simplificado y más eficiente.
+    """
 
     def optimize(self, ir: IRProgram) -> IRProgram:
+        """
+        Aplica en orden:
+        1. Propagación de constantes
+        2. Eliminación de temporales muertos
+        3. Eliminación de gotos triviales
+        """
         instrs = ir.instructions
         instrs = self.constant_propagation(instrs)
         instrs = self.remove_dead_temps(instrs)
@@ -45,33 +76,35 @@ class Optimizer:
         return IRProgram(instrs)
 
     # ============================================================
-    # 1) PROPAGACIÓN DE CONSTANTES
+    # 1) Propagación de constantes
     # ============================================================
 
     def constant_propagation(self, instrs: List[Instruction]) -> List[Instruction]:
+        """
+        Recorre las instrucciones buscando asignaciones constantes del tipo:
+            t0 = 5
+            t1 = "hola"
+
+        Estas constantes se almacenan en un diccionario y se sustituyen
+        posteriormente donde aparezcan.
+        """
         consts: Dict[str, str] = {}
         new = []
 
         for instr in instrs:
 
-            # ------------------------
-            # Asignaciones de tipo:
-            #    t0 = 5
-            #    t1 = 3.14
-            #    t2 = "hola"
-            # ------------------------
+            # Asignaciones constantes directas
             if isinstance(instr, Assign) and self._is_constant(instr.src):
                 consts[instr.dest] = instr.src
                 new.append(instr)
                 continue
 
-            # ------------------------
             # Operaciones binarias
-            # ------------------------
             if isinstance(instr, BinaryOp):
                 left = consts.get(instr.left, instr.left)
                 right = consts.get(instr.right, instr.right)
 
+                # Constant folding
                 if self._is_constant(left) and self._is_constant(right):
                     folded = self._fold_binary(instr.op, left, right)
                     new.append(Assign(instr.dest, folded))
@@ -80,9 +113,7 @@ class Optimizer:
                     new.append(BinaryOp(instr.dest, instr.op, left, right))
                 continue
 
-            # ------------------------
             # Operaciones unarias
-            # ------------------------
             if isinstance(instr, UnaryOp):
                 operand = consts.get(instr.operand, instr.operand)
 
@@ -94,37 +125,39 @@ class Optimizer:
                     new.append(UnaryOp(instr.dest, instr.op, operand))
                 continue
 
-            # ------------------------
-            # Instrucciones que NO se optimizan
-            # param, call, print, read, labels...
-            # ------------------------
+            # Otras instrucciones no se optimizan aquí
             new.append(instr)
 
         return new
 
     # ============================================================
-    # CONSTANT FOLDING (binario)
+    # Constant folding (binario)
     # ============================================================
 
     def _fold_binary(self, op: str, left: str, right: str) -> str:
-        # Si es string → solo permitimos "+"
+        """
+        Realiza la evaluación de una operación binaria si ambos operandos
+        son constantes. Soporta strings en operaciones de concatenación.
+        """
+        # Strings
         if left.startswith('"') or right.startswith('"'):
             if op == "+":
-                return f"{left[:-1]}{right[1:]}"  # concatenar strings
-            raise RuntimeError(f"No se puede aplicar '{op}' sobre strings")
+                # Concatenar quitando comillas duplicadas
+                return f"{left[:-1]}{right[1:]}"
+            raise RuntimeError(f"No se puede aplicar '{op}' sobre cadenas.")
 
-        # convertir a número
+        # Convertir a número
         a = float(left) if "." in left else int(left)
         b = float(right) if "." in right else int(right)
 
-        # operaciones
+        # Resolver operador
         if op == "+": r = a + b
         elif op == "-": r = a - b
         elif op == "*": r = a * b
         elif op == "/": r = a / b
         elif op == "%":
             if isinstance(a, float) or isinstance(b, float):
-                raise RuntimeError("El operador % solo acepta enteros")
+                raise RuntimeError("El operador % solo acepta enteros.")
             r = a % b
         elif op == "<": r = int(a < b)
         elif op == "<=": r = int(a <= b)
@@ -137,16 +170,20 @@ class Optimizer:
         else:
             raise RuntimeError(f"Operador no soportado en folding: {op}")
 
-        # devolver formato literal correcto
         return repr(r).replace("'", "")
 
     # ============================================================
-    # CONSTANT FOLDING (unario)
+    # Constant folding (unario)
     # ============================================================
 
     def _fold_unary(self, op: str, operand: str) -> str:
+        """
+        Evalúa operaciones unarias sobre constantes:
+        - -x
+        - !x
+        """
         if operand.startswith('"'):
-            raise RuntimeError("No se pueden aplicar unarios a cadenas")
+            raise RuntimeError("No se pueden aplicar unarios a cadenas.")
 
         val = float(operand) if "." in operand else int(operand)
 
@@ -158,10 +195,16 @@ class Optimizer:
         raise RuntimeError(f"Operador unario no soportado: {op}")
 
     # ============================================================
-    # Verificador de literal constante
+    # Verificador de literales constantes
     # ============================================================
 
     def _is_constant(self, val: str) -> bool:
+        """
+        Determina si un valor es un literal constante en IR:
+        - Strings entre comillas
+        - Números enteros o reales
+        - Booleanos codificados como 0 o 1
+        """
         if val.startswith('"') and val.endswith('"'):
             return True
         if val.replace('.', '', 1).isdigit():
@@ -175,9 +218,13 @@ class Optimizer:
     # ============================================================
 
     def remove_dead_temps(self, instrs: List[Instruction]) -> List[Instruction]:
+        """
+        Detecta temporales asignados pero nunca usados posteriormente
+        y elimina las instrucciones correspondientes.
+        """
         used: Set[str] = set()
 
-        # Colectar variables usadas
+        # Fase 1: detectar valores usados
         for instr in instrs:
 
             if isinstance(instr, Assign):
@@ -193,9 +240,6 @@ class Optimizer:
             elif isinstance(instr, PrintInstr):
                 used.add(instr.value)
 
-            elif isinstance(instr, ReadInstr):
-                pass  # destino, no fuente
-
             elif isinstance(instr, IfGoto):
                 used.add(instr.condition)
 
@@ -206,11 +250,10 @@ class Optimizer:
                 used.add(instr.value)
 
             elif isinstance(instr, CallInstr):
-                # destino puede ser None, pero si existe siempre se considera utilizado
                 if instr.dest:
                     used.add(instr.dest)
 
-        # reconstruir omitiendo temporales muertos
+        # Fase 2: reconstruir eliminando instrucciones innecesarias
         new = []
         for instr in instrs:
             if isinstance(instr, Assign):
@@ -225,6 +268,11 @@ class Optimizer:
     # ============================================================
 
     def remove_trivial_gotos(self, instrs: List[Instruction]) -> List[Instruction]:
+        """
+        Elimina instrucciones:
+            goto L1
+        cuando L1 es la instrucción inmediata siguiente.
+        """
         new = []
         for i, instr in enumerate(instrs):
             if isinstance(instr, Goto):
@@ -240,5 +288,8 @@ class Optimizer:
 # ============================================================
 
 def optimize(ir: IRProgram):
+    """
+    Ejecuta el optimizador sobre un IRProgram dado.
+    """
     return Optimizer().optimize(ir)
 

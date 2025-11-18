@@ -3,24 +3,14 @@
 """
 src/analisis_lexico/lexer.py
 ------------------------------------------------------------
-Lexer para Dragon-lang.
-Soporta:
-- Comentarios: '#' y /* ... */
-- Identificadores (con soporte para caracteres españoles)
-- Literales:
-    int
-    float
-    string
-    bool (true / false)
-- Operadores:
-    +  -  *  /  %  =
-    == != <= >= < >
-    && ||
-    !
-- Delimitadores: ( ) { } ; ,
-- Manejo correcto de línea y columna
-- Eliminación de BOM UTF-8
-- Manejo robusto de whitespace
+Descripción:
+Módulo encargado del análisis léxico del lenguaje Dragon-Lang.
+Se encarga de leer el código fuente y producir una secuencia de
+tokens significativos (identificadores, literales, operadores,
+delimitadores, palabras clave, etc.). También detecta errores
+léxicos con información precisa de línea y columna.
+
+Este módulo constituye la primera fase del compilador.
 ------------------------------------------------------------
 """
 
@@ -28,10 +18,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-
 # ============================================================
 #   PATRONES PARA FLOAT E INT
 # ============================================================
+# Se emplean expresiones regulares para detectar números
+# flotantes y enteros con soporte para notación científica.
 
 FLOAT_PATTERN = re.compile(
     r"""
@@ -52,9 +43,14 @@ INT_PATTERN = re.compile(r"\d+")
 # ============================================================
 #   TOKEN
 # ============================================================
-
 @dataclass
 class Token:
+    """
+    Representa un token léxico con:
+    - lexeme: texto exacto del token
+    - line: número de línea
+    - column: número de columna
+    """
     lexeme: str
     line: int
     column: int
@@ -63,8 +59,12 @@ class Token:
 # ============================================================
 #   ERROR LÉXICO
 # ============================================================
-
 class LexicalError(Exception):
+    """
+    Excepción especializada para errores léxicos.
+    Incluye mensaje, línea, columna y fragmento del código.
+    """
+
     def __init__(self, message: str, line: int, column: int, source: str):
         self.message = message
         self.line = line
@@ -86,11 +86,22 @@ class LexicalError(Exception):
 
 
 # ============================================================
-#   TOKENIZER
+#   TOKENIZER (AUTÓMATA LÉXICO)
 # ============================================================
-
 def tokenize(source: str):
-    # eliminar BOM UTF-8 si existe
+    """
+    Procesa el código fuente y produce una secuencia de objetos Token.
+    Implementa:
+    - Eliminación de BOM UTF-8
+    - Manejo de comentarios de línea y bloque
+    - Literales string con verificación de cierre
+    - Literales numéricos
+    - Identificadores con soporte para caracteres latinos extendidos
+    - Operadores de uno y dos caracteres
+    - Reporte de errores léxicos con contexto
+    """
+
+    # Eliminar BOM UTF-8 si está presente
     if source.startswith("\ufeff"):
         source = source[1:]
 
@@ -105,6 +116,7 @@ def tokenize(source: str):
     def current():
         return source[pos] if pos < length else "\0"
 
+    # Bucle principal del analizador léxico
     while pos < length:
         char = current()
 
@@ -130,7 +142,7 @@ def tokenize(source: str):
 
             block = source[pos:end + 2]
 
-            # Actualizar líneas
+            # Actualizar líneas y columnas
             line += block.count("\n")
             if "\n" in block:
                 column = len(block.split("\n")[-1]) + 1
@@ -153,7 +165,6 @@ def tokenize(source: str):
         # ----------------------------------------------------
         if char == '"':
             start_col = column
-            start_pos = pos
             pos += 1
             column += 1
 
@@ -198,7 +209,7 @@ def tokenize(source: str):
             continue
 
         # ----------------------------------------------------
-        # Identificadores (incluyendo caracteres españoles)
+        # Identificadores (incluye caracteres españoles)
         # ----------------------------------------------------
         if char.isalpha() or char == "_" or char >= "\u00C0":
             start = pos
@@ -240,5 +251,6 @@ def tokenize(source: str):
         # ----------------------------------------------------
         error(f"Carácter inesperado: '{char}'")
 
+    # Token especial EOF
     yield Token("EOF", line, column)
 

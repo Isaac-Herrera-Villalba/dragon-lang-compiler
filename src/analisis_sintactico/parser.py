@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-parser.py corregido
-Parser descendente recursivo para Dragon-lang, con:
+src/analisis_sintactico/parser.py
+------------------------------------------------------------
+Descripción:
+Módulo encargado del análisis sintáctico (parser) de Dragon-Lang.
+Implementa un parser descendente recursivo que, a partir de la
+secuencia de tokens generada por el analizador léxico, construye
+un Árbol Sintáctico Abstracto (AST) según la gramática del lenguaje.
 
-- funciones con parámetros
-- strings
-- floats, ints, bools
-- if / while / do-while / for
-- bloques correctos
+Este módulo:
+- Valida la estructura sintáctica del programa.
+- Construye nodos AST para funciones, sentencias y expresiones.
+- Reporta errores sintácticos con información precisa de línea
+  y columna, destacando el lexema problemático.
+
+Constituye la segunda fase del pipeline de compilación.
+------------------------------------------------------------
 """
 
 from __future__ import annotations
@@ -41,6 +49,15 @@ from .ast import (
 
 
 class ParseError(Exception):
+    """
+    Excepción especializada para errores sintácticos.
+
+    Incluye:
+    - mensaje descriptivo del error
+    - token donde se detectó el problema
+    - código fuente completo para poder resaltar la línea y columna
+    """
+
     def __init__(self, message: str, token: Token, source: str) -> None:
         self.message = message
         self.token = token
@@ -63,11 +80,25 @@ class ParseError(Exception):
 
 
 class Parser:
+    """
+    Parser descendente recursivo para Dragon-Lang.
+
+    Trabaja sobre una lista de tokens y construye un AST de alto nivel:
+    - Program: lista de funciones
+    - FunctionDecl: cuerpo, parámetros
+    - Sentencias de control de flujo
+    - Expresiones con precedencia y asociatividad
+
+    No realiza análisis de tipos ni verificación semántica; eso se delega
+    al módulo de análisis semántico.
+    """
+
     def __init__(self, tokens: List[Token], source: str):
         self.tokens = tokens
         self.source = source
         self.current = 0
 
+        # Conjunto de palabras clave para distinguir identificadores
         self.keywords = {
             "func", "int", "float", "bool", "string",
             "if", "else", "while", "do", "for",
@@ -75,28 +106,45 @@ class Parser:
             "true", "false",
         }
 
-    # -------------- Helpers -------------------
+    # ===========================================================
+    # Helpers básicos de navegación sobre la lista de tokens
+    # ===========================================================
 
-    def is_at_end(self):
+    def is_at_end(self) -> bool:
+        """Devuelve True si se alcanzó el token EOF."""
         return self.peek().lexeme == "EOF"
 
-    def peek(self):
+    def peek(self) -> Token:
+        """Devuelve el token actual sin consumirlo."""
         return self.tokens[self.current]
 
-    def previous(self):
+    def previous(self) -> Token:
+        """Devuelve el último token consumido."""
         return self.tokens[self.current - 1]
 
-    def advance(self):
+    def advance(self) -> Token:
+        """
+        Consume el token actual y avanza al siguiente.
+        Devuelve el token recién consumido.
+        """
         if not self.is_at_end():
             self.current += 1
         return self.previous()
 
-    def check(self, lex):
+    def check(self, lex: str) -> bool:
+        """
+        Comprueba si el token actual coincide con el lexema indicado,
+        sin consumirlo.
+        """
         if self.is_at_end():
             return False
         return self.peek().lexeme == lex
 
-    def match(self, *lexemes):
+    def match(self, *lexemes: str) -> bool:
+        """
+        Si el token actual es uno de los lexemas dados, lo consume
+        y devuelve True; en caso contrario devuelve False.
+        """
         if self.is_at_end():
             return False
         if self.peek().lexeme in lexemes:
@@ -104,31 +152,49 @@ class Parser:
             return True
         return False
 
-    def consume(self, lex, msg):
+    def consume(self, lex: str, msg: str) -> Token:
+        """
+        Consume el token esperado (por lexema) o lanza un ParseError
+        con el mensaje proporcionado.
+        """
         if self.check(lex):
             return self.advance()
         raise self.error(self.peek(), msg)
 
-    def error(self, tok: Token, msg: str):
+    def error(self, tok: Token, msg: str) -> ParseError:
+        """Crea una instancia de ParseError con contexto de fuente."""
         return ParseError(msg, tok, self.source)
 
-    # ===========================================
+    # ===========================================================
     # PROGRAM
-    # ===========================================
+    # ===========================================================
 
-    def parse_program(self):
-        funcs = []
+    def parse_program(self) -> Program:
+        """
+        Punto de entrada del parser.
+
+        Un programa es una secuencia de declaraciones de funciones
+        hasta llegar a EOF.
+        """
+        funcs: List[FunctionDecl] = []
         while not self.is_at_end():
             if self.check("EOF"):
                 break
             funcs.append(self.function_decl())
         return Program(funcs)
 
-    # ===========================================
+    # ===========================================================
     # FUNCTIONS
-    # ===========================================
+    # ===========================================================
 
-    def function_decl(self):
+    def function_decl(self) -> FunctionDecl:
+        """
+        Analiza una declaración de función con la forma:
+
+            func nombre(tipo1 p1, tipo2 p2, ...) {
+                ...
+            }
+        """
         self.consume("func", "Se esperaba 'func' al inicio de una función.")
 
         name_tok = self.consume_identifier("Se esperaba nombre de función.")
@@ -136,7 +202,7 @@ class Parser:
 
         self.consume("(", "Se esperaba '(' en declaración de función.")
 
-        params = []
+        params: List[Param] = []
         if not self.check(")"):
             params = self.param_list()
 
@@ -145,41 +211,68 @@ class Parser:
         body = self.block()
         return FunctionDecl(name=func_name, params=params, body=body)
 
-    def param_list(self):
+    def param_list(self) -> List[Param]:
+        """
+        Analiza una lista de parámetros separada por comas:
+
+            int a, float b, bool c
+        """
         params = [self.param()]
         while self.match(","):
             params.append(self.param())
         return params
 
-    def param(self):
+    def param(self) -> Param:
+        """Analiza un parámetro individual: tipo + nombre."""
         type_tok = self.consume_type("Se esperaba tipo de parámetro.")
         name_tok = self.consume_identifier("Se esperaba nombre de parámetro.")
         return Param(type_tok.lexeme, name_tok.lexeme)
 
-    # ===========================================
+    # ===========================================================
     # DECLARATIONS / STATEMENTS
-    # ===========================================
+    # ===========================================================
 
-    def declaration(self):
+    def declaration(self) -> Stmt:
+        """
+        Punto de entrada para declaraciones dentro de un bloque.
+
+        Puede ser:
+        - Declaración de variable
+        - O cualquier tipo de sentencia
+        """
         if self.check("int") or self.check("float") or self.check("bool") or self.check("string"):
             return self.var_declaration()
         return self.statement()
 
-    def var_declaration(self):
+    def var_declaration(self) -> VarDeclStmt:
+        """
+        Declaración de variable con inicialización opcional:
+
+            int x;
+            float y = 3.14;
+        """
         type_tok = self.advance()
         var_type = type_tok.lexeme
 
         name_tok = self.consume_identifier("Se esperaba nombre de variable.")
         var_name = name_tok.lexeme
 
-        init = None
+        init: Optional[Expr] = None
         if self.match("="):
             init = self.expression()
 
         self.consume(";", "Se esperaba ';' después de declaración.")
         return VarDeclStmt(var_type, var_name, init)
 
-    def statement(self):
+    def statement(self) -> Stmt:
+        """
+        Analiza una sentencia genérica, que puede ser:
+        - Bloque
+        - if / while / do-while / for
+        - print / read
+        - return
+        - o una expresión terminada en ';'
+        """
         # Bloque → NO consumir aquí la {
         if self.check("{"):
             return self.block()
@@ -207,13 +300,20 @@ class Parser:
 
         return self.expr_statement()
 
-    # ===========================================
+    # ===========================================================
     # BLOCK
-    # ===========================================
+    # ===========================================================
 
-    def block(self):
+    def block(self) -> BlockStmt:
+        """
+        Analiza un bloque de sentencias:
+
+            {
+                ...
+            }
+        """
         self.consume("{", "Se esperaba '{'.")
-        stmts = []
+        stmts: List[Stmt] = []
 
         while not self.check("}") and not self.is_at_end():
             stmts.append(self.declaration())
@@ -221,28 +321,31 @@ class Parser:
         self.consume("}", "Se esperaba '}' al final del bloque.")
         return BlockStmt(stmts)
 
-    # ===========================================
+    # ===========================================================
     # IF, WHILE, DO-WHILE, FOR
-    # ===========================================
+    # ===========================================================
 
-    def if_statement(self):
+    def if_statement(self) -> IfStmt:
+        """Analiza una sentencia if (posiblemente con else)."""
         self.consume("(", "Se esperaba '(' después de 'if'.")
         cond = self.expression()
         self.consume(")", "Se esperaba ')' en condición de if.")
         then_b = self.statement()
-        else_b = None
+        else_b: Optional[Stmt] = None
         if self.match("else"):
             else_b = self.statement()
         return IfStmt(cond, then_b, else_b)
 
-    def while_statement(self):
+    def while_statement(self) -> WhileStmt:
+        """Analiza un bucle while clásico."""
         self.consume("(", "Se esperaba '(' después de 'while'.")
         cond = self.expression()
         self.consume(")", "Se esperaba ')' en while.")
         body = self.statement()
         return WhileStmt(cond, body)
 
-    def do_while_statement(self):
+    def do_while_statement(self) -> DoWhileStmt:
+        """Analiza un bucle do-while."""
         body = self.statement()
         self.consume("while", "Se esperaba 'while' después de 'do'.")
         self.consume("(", "Se esperaba '(' después de while.")
@@ -251,13 +354,19 @@ class Parser:
         self.consume(";", "Se esperaba ';' en do-while.")
         return DoWhileStmt(body, cond)
 
-    def for_statement(self):
+    def for_statement(self) -> ForStmt:
+        """
+        Analiza un bucle for de la forma:
+
+            for ( init ; cond ; update ) stmt
+        donde cada componente es opcional.
+        """
         self.consume("(", "Se esperaba '(' en for.")
 
         # init
         if not self.check(";"):
             if self.check("int") or self.check("float") or self.check("bool") or self.check("string"):
-                init = self.var_declaration()
+                init: Optional[Stmt] = self.var_declaration()
             else:
                 init_expr = self.expression()
                 self.consume(";", "Se esperaba ';' después de init.")
@@ -285,21 +394,24 @@ class Parser:
 
         return ForStmt(init, cond, update, body)
 
-    # ===========================================
-    # PRINT / READ / RETURN
-    # ===========================================
+    # ===========================================================
+    # PRINT / READ / RETURN / EXPR-STMT
+    # ===========================================================
 
-    def print_statement(self):
+    def print_statement(self) -> PrintStmt:
+        """Analiza la sentencia print expr;"""
         e = self.expression()
         self.consume(";", "Se esperaba ';' en print.")
         return PrintStmt(e)
 
-    def read_statement(self):
+    def read_statement(self) -> ReadStmt:
+        """Analiza la sentencia read identificador;"""
         name_tok = self.consume_identifier("Se esperaba nombre en read.")
         self.consume(";", "Se esperaba ';' en read.")
         return ReadStmt(VarExpr(name_tok.lexeme))
 
-    def return_statement(self):
+    def return_statement(self) -> ReturnStmt:
+        """Analiza la sentencia return; o return expr;"""
         if not self.check(";"):
             val = self.expression()
         else:
@@ -307,19 +419,28 @@ class Parser:
         self.consume(";", "Se esperaba ';' en return.")
         return ReturnStmt(val)
 
-    def expr_statement(self):
+    def expr_statement(self) -> ExprStmt:
+        """Analiza una sentencia de expresión terminada en ';'."""
         e = self.expression()
         self.consume(";", "Se esperaba ';'.")
         return ExprStmt(e)
 
-    # ===========================================
-    # EXPRESSIONS
-    # ===========================================
+    # ===========================================================
+    # EXPRESSIONS (jerarquía de precedencias)
+    # ===========================================================
 
-    def expression(self):
+    def expression(self) -> Expr:
+        """Entrada general para expresiones: empieza por asignación."""
         return self.assignment()
 
-    def assignment(self):
+    def assignment(self) -> Expr:
+        """
+        Analiza expresiones de asignación:
+
+            x = expr
+
+        Si no hay '=', se interpreta como una expresión lógica (or_expr).
+        """
         expr = self.or_expr()
         if self.match("="):
             value = self.assignment()
@@ -328,7 +449,8 @@ class Parser:
             raise self.error(self.previous(), "La izquierda de '=' debe ser variable.")
         return expr
 
-    def or_expr(self):
+    def or_expr(self) -> Expr:
+        """Expresiones con operador lógico OR (||)."""
         expr = self.and_expr()
         while self.match("||"):
             op = self.previous().lexeme
@@ -336,7 +458,8 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def and_expr(self):
+    def and_expr(self) -> Expr:
+        """Expresiones con operador lógico AND (&&)."""
         expr = self.equality()
         while self.match("&&"):
             op = self.previous().lexeme
@@ -344,7 +467,8 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def equality(self):
+    def equality(self) -> Expr:
+        """Operadores de igualdad: == y !=."""
         expr = self.comparison()
         while self.match("==", "!="):
             op = self.previous().lexeme
@@ -352,7 +476,8 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def comparison(self):
+    def comparison(self) -> Expr:
+        """Operadores relacionales: <, <=, >, >=."""
         expr = self.term()
         while self.match("<", "<=", ">", ">="):
             op = self.previous().lexeme
@@ -360,7 +485,8 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def term(self):
+    def term(self) -> Expr:
+        """Suma y resta: +, -."""
         expr = self.factor()
         while self.match("+", "-"):
             op = self.previous().lexeme
@@ -368,7 +494,8 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def factor(self):
+    def factor(self) -> Expr:
+        """Multiplicación, división y módulo: *, /, %."""
         expr = self.unary()
         while self.match("*", "/", "%"):
             op = self.previous().lexeme
@@ -376,18 +503,25 @@ class Parser:
             expr = BinaryExpr(expr, op, right)
         return expr
 
-    def unary(self):
+    def unary(self) -> Expr:
+        """Operadores unarios: ! y -."""
         if self.match("!", "-"):
             op = self.previous().lexeme
             right = self.unary()
             return UnaryExpr(op, right)
         return self.primary()
 
-    # ===========================================
-    # PRIMARY (con soporte correcto de strings)
-    # ===========================================
+    # ===========================================================
+    # PRIMARY (literales, identificadores, agrupación)
+    # ===========================================================
 
-    def primary(self):
+    def primary(self) -> Expr:
+        """
+        Analiza elementos primarios:
+        - literales numéricos, booleanos y strings
+        - expresiones agrupadas: (expr)
+        - uso de variables (identificadores)
+        """
         if self.is_at_end():
             raise self.error(self.peek(), "Expresión incompleta.")
 
@@ -420,19 +554,21 @@ class Parser:
             self.consume(")", "Se esperaba ')'.")
             return GroupingExpr(expr)
 
-        # Identificador
+        # Identificador (no palabra clave)
         if lex not in self.keywords and (lex[0].isalpha() or lex[0] == "_"):
             self.advance()
             return VarExpr(lex)
 
         raise self.error(tok, f"Expresión inválida: '{lex}'.")
 
+    # ===========================================================
+    # Utilities para identificadores y tipos
+    # ===========================================================
 
-    # ===========================================
-    # Utilities
-    # ===========================================
-
-    def consume_identifier(self, msg):
+    def consume_identifier(self, msg: str) -> Token:
+        """
+        Consume un identificador válido (no palabra clave) o lanza error.
+        """
         tok = self.peek()
         lex = tok.lexeme
 
@@ -442,7 +578,10 @@ class Parser:
 
         raise self.error(tok, msg)
 
-    def consume_type(self, msg):
+    def consume_type(self, msg: str) -> Token:
+        """
+        Consume un tipo básico válido: int, float, bool, string.
+        """
         tok = self.peek()
         if tok.lexeme in ("int", "float", "bool", "string"):
             self.advance()
@@ -450,6 +589,10 @@ class Parser:
         raise self.error(tok, msg)
 
 
-def parse(tokens, source):
+def parse(tokens: List[Token], source: str) -> Program:
+    """
+    Función de conveniencia que construye un Parser
+    y devuelve el AST completo del programa.
+    """
     return Parser(tokens, source).parse_program()
 
